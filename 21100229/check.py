@@ -6,7 +6,6 @@ import random
 import uuid
 import shutil  
 
-
 def generateFiles(files):
 	for f in files:
 		file = open(f,"w")
@@ -64,28 +63,28 @@ def testJoin(nodes,p):
 		points += 3
 	else:
 		print ("Case 2 failed. \t(0)")
-	print ("Case 3: Checking for general case.")
-	nodes[2].join(("localhost", p[0]))
-	time.sleep(2)
-	nodes[3].join(("localhost", p[0]))
-	time.sleep(2)
-	nodes[4].join(("localhost", p[1]))
-	time.sleep(2)
-	nodes.sort(key=lambda x: x.key, reverse=False)
-	correct = True
-	for i in range(len(nodes)):
-		if nodes[i].successor == None:
-			correct = False
-		elif nodes[i].successor[1] == nodes[(i+1) % len(nodes)].port and nodes[i].predecessor[1] == nodes[i-1].port:
-			continue
-		else:
-			correct = False
-	if correct:
-		print ("Case 3 passed. \t(+5)")
-		points += 5
-	else:
-		print ("Case 3 failed. \t(0)")
-	print ("\nJoin testing completed. Points:",points,"/ 9")
+	# print ("Case 3: Checking for general case.")
+	# nodes[2].join(("localhost", p[0]))
+	# time.sleep(2)
+	# nodes[3].join(("localhost", p[0]))
+	# time.sleep(2)
+	# nodes[4].join(("localhost", p[1]))
+	# time.sleep(2)
+	# nodes.sort(key=lambda x: x.key, reverse=False)
+	# correct = True
+	# for i in range(len(nodes)):
+	# 	if nodes[i].successor == None:
+	# 		correct = False
+	# 	elif nodes[i].successor[1] == nodes[(i+1) % len(nodes)].port and nodes[i].predecessor[1] == nodes[i-1].port:
+	# 		continue
+	# 	else:
+	# 		correct = False
+	# if correct:
+	# 	print ("Case 3 passed. \t(+5)")
+	# 	points += 5
+	# else:
+	# 	print ("Case 3 failed. \t(0)")
+	# print ("\nJoin testing completed. Points:",points,"/ 9")
 	return nodes, points
 
 def testPutandGet(nodes, files):
@@ -152,8 +151,6 @@ def testFileRehashing(nodes, files, sp):
 		return nodes, 0
 	print("\nFile Rehashing testing completed. Points: 5 / 5")
 	return nodes, 5
-
-		
 
 def testLeave(nodes, files):
 	print ("\n\t --* Testing Leave *--\n")
@@ -224,7 +221,6 @@ def testFailureTolerance(nodes, files):
 	print("\nFailure Tolerance testing completed. Points: 10 / 10")
 	return nodes, 10
 
-
 def printN(nodes):
 	print ("\nPrinting all nodes.")
 	for n in nodes:
@@ -244,14 +240,14 @@ except:
 p = [start_port+0, start_port+1, start_port+2, start_port+3, start_port+4]
 files = ["dummy.txt", "dummy2.txt","dummy3.txt","dummy4.txt","dummy5.txt","dummy6.txt","dummy7.txt","dummy8.txt"]
 
-
 nodes, p1 = initiate(p)
 nodes, p2 = testJoin(nodes, p)
-generateFiles(files)
-p3 = testPutandGet(nodes, files)
-nodes, p4 = testFileRehashing(nodes, files, start_port+5)
-nodes, p5 = testLeave(nodes, files)
-nodes, p6 = testFailureTolerance(nodes, files)
+# generateFiles(files)
+# p3 = testPutandGet(nodes, files)
+# nodes, p4 = testFileRehashing(nodes, files, start_port+5)
+# nodes, p5 = testLeave(nodes, files)
+# nodes, p6 = testFailureTolerance(nodes, files)
+p3, p4, p5, p6 = 0, 0, 0, 0
 
 print ("\nTotal points: ", p1+p2+p3+p4+p5+p6, "/ 40")
 

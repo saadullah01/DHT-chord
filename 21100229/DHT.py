@@ -3,6 +3,7 @@ import threading
 import os
 import time
 import hashlib
+import json
 
 class Node:
 	def __init__(self, host, port):
@@ -26,6 +27,9 @@ class Node:
 		self.successor = (host, port)
 		self.predecessor = (host, port)
 		# additional state variables
+		self.alreadyLooked = False
+		self.pingTime = 0.5
+		threading.Thread(target=self.ping).start()
 
 	def hasher(self, key):
 		'''
@@ -40,6 +44,25 @@ class Node:
 		'''
 		 Function to handle each inbound connection, called as a thread from the listener.
 		'''
+		msg = json.loads(client.recv(1024).decode("utf-8"))
+		if msg["type"] == "lookup":
+			node = self.lookUp(msg["key"])
+			client.send(
+				json.dumps({"type": "lookup", "successor": node}).encode("utf-8")
+			)
+		elif msg["type"] == "update_p":
+			self.predecessor = (msg["predecessor"][0], msg["predecessor"][1])
+			print("Predecessor: ", self.predecessor)
+		elif msg["type"] == "ping":
+			reqNode = (msg["req"][0], msg["req"][1])
+			if reqNode == self.predecessor:
+				client.send(
+					json.dumps({"type": "ping", "ans": "yes"}).encode("utf-8")
+				)
+			else:
+				client.send(
+					json.dumps({"type": "ping", "ans": "yes", "res": self.predecessor}).encode("utf-8")
+				)
 
 	def listener(self):
 		'''
@@ -60,11 +83,74 @@ class Node:
 		except:
 			listener.close()
 
+	def ping(self):
+		# Checks whether I am your predecessor or not
+		startTime = time.time()
+		while not self.stop:
+			while time.time() >= (startTime + self.pingTime):
+				res = json.loads(self.send(
+					self.successor,
+					json.dumps({"type": "ping", "req": (self.host, self.port)}).encode("utf-8"),
+					recv=True
+				))
+				if res["ans"] == "no":
+					self.successor = (res["res"][0], res["res"][1])
+				startTime = time.time()
+
+	def send(self, to, msg, recv=False):
+		res = None
+		soc = socket.socket()
+		soc.connect(to)
+		soc.send(msg)
+		if recv:
+			res = soc.recv(1024).decode("utf-8")
+		soc.close()
+		return res
+
+	def lookUp(self, key):
+		# print(self.key, key)
+		node = (self.host, self.port)
+		# Finds the server that is responsible for the "key"
+		if not self.alreadyLooked: 		# Not Looked in Cycle
+			self.alreadyLooked = True 	# Mark It
+			if key > self.key: 			# Not Present Here
+				res = json.loads(self.send(
+					self.successor,
+					json.dumps({"type":"lookup", "key": key}).encode("utf-8"),
+					recv=True
+				))
+				node = (res["successor"][0], res["successor"][1])
+			# Looked Here
+			self.alreadyLooked = False
+		# Found from next Peers OR Present on Self
+		return node 
+
 	def join(self, joiningAddr):
 		'''
 		This function handles the logic of a node joining. This function should do a lot of things such as:
 		Update successor, predecessor, getting files, back up files. SEE MANUAL FOR DETAILS.
 		'''
+		# Corner Case 1: 1 Node (empty string)
+		if joiningAddr:
+			print((self.host, self.port), "joining:", joiningAddr)
+			# Message joiningAdd to lookup for my successor
+			res = json.loads(
+				self.send(
+					joiningAddr,
+					json.dumps({"type":"lookup", "key": self.hasher(self.host+str(self.port))}).encode("utf-8"),
+					recv=True
+				)
+			)
+			# Update Successor
+			self.successor = (res["successor"][0], res["successor"][1])
+			print("Successor: ", self.successor)
+			# Message Successor to update predecessor
+			self.send(
+				self.successor,
+				json.dumps({"type":"update_p", "predecessor": (self.host, self.port)}).encode("utf-8")
+			)
+			# Get Files
+			# Back Up Files
 
 	def put(self, fileName):
 		'''
@@ -72,6 +158,7 @@ class Node:
 		Responsible node should then replicate the file on appropriate node. SEE MANUAL FOR DETAILS. Responsible node should save the files
 		in directory given by host_port e.g. "localhost_20007/file.py".
 		'''
+		pass
 		
 	def get(self, fileName):
 		'''
