@@ -4,7 +4,6 @@ import os
 import time
 import hashlib
 
-
 class Node:
 	def __init__(self, host, port):
 		self.stop = False
@@ -24,11 +23,9 @@ class Node:
 		DO NOT EDIT ANYTHING ABOVE THIS LINE
 		'''
 		# Set value of the following variables appropriately to pass Intialization test
-		self.successor = None
-		self.predecessor = None
+		self.successor = (host, port)
+		self.predecessor = (host, port)
 		# additional state variables
-
-
 
 	def hasher(self, key):
 		'''
@@ -38,7 +35,6 @@ class Node:
 			For a file: self.hasher(file)
 		'''
 		return int(hashlib.md5(key.encode()).hexdigest(), 16) % self.N
-
 
 	def handleConnection(self, client, addr):
 		'''
@@ -83,7 +79,6 @@ class Node:
 		i.e. "./file.py" and returns the name of file. If the file is not present on the network, return None.
 		'''
 
-		
 	def leave(self):
 		'''
 		When called leave, a node should gracefully leave the network i.e. it should update its predecessor that it is leaving
@@ -125,5 +120,3 @@ class Node:
 	def kill(self):
 		# DO NOT EDIT THIS, used for code testing
 		self.stop = True
-
-		
