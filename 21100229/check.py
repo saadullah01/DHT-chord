@@ -245,7 +245,7 @@ nodes, p1 = initiate(p)
 nodes, p2 = testJoin(nodes, p)
 generateFiles(files)
 p3 = testPutandGet(nodes, files)
-nodes, p4 = testFileRehashing(nodes, files, start_port+5)
+# nodes, p4 = testFileRehashing(nodes, files, start_port+5)
 # nodes, p5 = testLeave(nodes, files)
 # nodes, p6 = testFailureTolerance(nodes, files)
 

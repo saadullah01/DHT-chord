@@ -30,6 +30,7 @@ class Node:
 		self.alreadyLooked = False
 		self.pingTime = 0.5
 		threading.Thread(target=self.ping).start()
+		self.connections = dict()
 
 	def hasher(self, key):
 		'''
@@ -45,6 +46,7 @@ class Node:
 		 Function to handle each inbound connection, called as a thread from the listener.
 		'''
 		msg = client.recv(1024).decode("utf-8")
+		print(msg)
 		msg = json.loads(msg)
 		if msg["type"] == "lookup":
 			node = self.lookUp(msg["key"])
@@ -70,19 +72,20 @@ class Node:
 			elif self.predecessor != self.successor and self.predecessor == (self.host, self.port):
 				self.predecessor = self.successor
 		elif msg["type"] == "put":
-			# self.files.append(msg["file"])
-			# self.send(
-			# 	self.predecessor,
-			# 	json.dumps({"type":"put_b", "file": msg["file"]}).encode("utf-8")
-			# )
-			# putFile = open(os.path.join(self.host+"_"+str(self.port), msg['file']), "w")
-			# putFile.close()
-			pass
+			# Recieve File
+			self.files.append(msg["file"])
+			self.recieveFile(client, os.path.join(self.host+"_"+str(self.port), msg["file"]))
+			# Send Back Up File
+			soc = socket.socket()
+			soc.connect(self.predecessor)
+			soc.send(
+				json.dumps({"type":"put_b", "file": msg["file"]}).encode("utf-8")
+			)
+			self.sendFile(soc, os.path.join(self.host+"_"+str(self.port), msg["file"]))
+			soc.close()
 		elif msg["type"] == "put_b":
-			# self.backUpFiles.append(msg["file"])
-			# putFile = open(os.path.join(self.host+"_"+str(self.port), msg['file']), "w")
-			# putFile.close()
-			pass
+			self.backUpFiles.append(msg["file"])
+			self.recieveFile(client, os.path.join(self.host+"_"+str(self.port), msg["file"]))
 		elif msg["type"] == "get":
 			for f in self.files:
 				if msg["file"] == f:
@@ -194,6 +197,10 @@ class Node:
 		responsibleNode = self.lookUp(self.hasher(fileName))
 		soc = socket.socket()
 		soc.connect(responsibleNode)
+		soc.send(
+			json.dumps({"type": "put", "file": fileName}).encode("utf-8")
+		)
+		time.sleep(1)
 		self.sendFile(soc, os.path.join(fileName))
 		soc.close()
 		
