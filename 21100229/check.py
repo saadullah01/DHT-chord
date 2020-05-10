@@ -63,28 +63,28 @@ def testJoin(nodes,p):
 		points += 3
 	else:
 		print ("Case 2 failed. \t(0)")
-	# print ("Case 3: Checking for general case.")
-	# nodes[2].join(("localhost", p[0]))
-	# time.sleep(2)
-	# nodes[3].join(("localhost", p[0]))
-	# time.sleep(2)
-	# nodes[4].join(("localhost", p[1]))
-	# time.sleep(2)
-	# nodes.sort(key=lambda x: x.key, reverse=False)
-	# correct = True
-	# for i in range(len(nodes)):
-	# 	if nodes[i].successor == None:
-	# 		correct = False
-	# 	elif nodes[i].successor[1] == nodes[(i+1) % len(nodes)].port and nodes[i].predecessor[1] == nodes[i-1].port:
-	# 		continue
-	# 	else:
-	# 		correct = False
-	# if correct:
-	# 	print ("Case 3 passed. \t(+5)")
-	# 	points += 5
-	# else:
-	# 	print ("Case 3 failed. \t(0)")
-	# print ("\nJoin testing completed. Points:",points,"/ 9")
+	print ("Case 3: Checking for general case.")
+	nodes[2].join(("localhost", p[0]))
+	time.sleep(2)
+	nodes[3].join(("localhost", p[0]))
+	time.sleep(2)
+	nodes[4].join(("localhost", p[1]))
+	time.sleep(2)
+	nodes.sort(key=lambda x: x.key, reverse=False)
+	correct = True
+	for i in range(len(nodes)):
+		if nodes[i].successor == None:
+			correct = False
+		elif nodes[i].successor[1] == nodes[(i+1) % len(nodes)].port and nodes[i].predecessor[1] == nodes[i-1].port:
+			continue
+		else:
+			correct = False
+	if correct:
+		print ("Case 3 passed. \t(+5)")
+		points += 5
+	else:
+		print ("Case 3 failed. \t(0)")
+	print ("\nJoin testing completed. Points:",points,"/ 9")
 	return nodes, points
 
 def testPutandGet(nodes, files):

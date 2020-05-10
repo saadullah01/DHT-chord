@@ -52,7 +52,7 @@ class Node:
 			)
 		elif msg["type"] == "update_p":
 			self.predecessor = (msg["predecessor"][0], msg["predecessor"][1])
-			print("Predecessor: ", self.predecessor)
+			print("Self: ", self.port, "Predecessor: ", self.predecessor)
 		elif msg["type"] == "ping":
 			reqNode = (msg["req"][0], msg["req"][1])
 			if reqNode == self.predecessor:
@@ -61,8 +61,13 @@ class Node:
 				)
 			else:
 				client.send(
-					json.dumps({"type": "ping", "ans": "yes", "res": self.predecessor}).encode("utf-8")
+					json.dumps({"type": "ping", "ans": "no", "res": self.predecessor}).encode("utf-8")
 				)
+			# Join Corner Case 2
+			if self.predecessor != self.successor and self.successor == (self.host, self.port):
+				self.successor = self.predecessor
+			elif self.predecessor != self.successor and self.predecessor == (self.host, self.port):
+				self.predecessor = self.successor
 
 	def listener(self):
 		'''
@@ -95,7 +100,13 @@ class Node:
 				))
 				if res["ans"] == "no":
 					self.successor = (res["res"][0], res["res"][1])
+					# Message Successor to update predecessor
+					self.send(
+						self.successor,
+						json.dumps({"type":"update_p", "predecessor": (self.host, self.port)}).encode("utf-8")
+					)
 				startTime = time.time()
+				print("Self: ", self.port, "-- S: ", self.successor, "-- P: ", self.predecessor)
 
 	def send(self, to, msg, recv=False):
 		res = None
@@ -143,7 +154,7 @@ class Node:
 			)
 			# Update Successor
 			self.successor = (res["successor"][0], res["successor"][1])
-			print("Successor: ", self.successor)
+			print("Self: ", self.port, "Successor: ", self.successor)
 			# Message Successor to update predecessor
 			self.send(
 				self.successor,
