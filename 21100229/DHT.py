@@ -27,9 +27,7 @@ class Node:
 		self.successor = (host, port)
 		self.predecessor = (host, port)
 		# additional state variables
-		self.alreadyLooked = False
 		self.pingTime = 0.5
-		threading.Thread(target=self.ping).start()
 		self.connections = dict()
 
 	def hasher(self, key):
@@ -46,7 +44,7 @@ class Node:
 		 Function to handle each inbound connection, called as a thread from the listener.
 		'''
 		msg = client.recv(1024).decode("utf-8")
-		print(msg)
+		# print(msg)
 		msg = json.loads(msg)
 		if msg["type"] == "lookup":
 			node = self.lookUp(msg["key"])
@@ -55,7 +53,7 @@ class Node:
 			)
 		elif msg["type"] == "update_p":
 			self.predecessor = (msg["predecessor"][0], msg["predecessor"][1])
-			# print("Self: ", self.port, "Predecessor: ", self.predecessor)
+			# print("Self: ", self.port, "Predecessor: ", self.predecessor, "\n")
 		elif msg["type"] == "ping":
 			reqNode = (msg["req"][0], msg["req"][1])
 			if reqNode == self.predecessor:
@@ -71,9 +69,11 @@ class Node:
 				self.successor = self.predecessor
 			elif self.predecessor != self.successor and self.predecessor == (self.host, self.port):
 				self.predecessor = self.successor
+			# print("Self: ", self.port, "---S: ", self.successor, "---P: ", self.predecessor)
 		elif msg["type"] == "put":
 			# Recieve File
 			self.files.append(msg["file"])
+			client.send(("ok").encode("utf-8"))
 			self.recieveFile(client, os.path.join(self.host+"_"+str(self.port), msg["file"]))
 			# Send Back Up File
 			soc = socket.socket()
@@ -81,15 +81,19 @@ class Node:
 			soc.send(
 				json.dumps({"type":"put_b", "file": msg["file"]}).encode("utf-8")
 			)
+			soc.recv(1024).decode("utf-8")
 			self.sendFile(soc, os.path.join(self.host+"_"+str(self.port), msg["file"]))
 			soc.close()
 		elif msg["type"] == "put_b":
 			self.backUpFiles.append(msg["file"])
+			client.send(("ok").encode("utf-8"))
 			self.recieveFile(client, os.path.join(self.host+"_"+str(self.port), msg["file"]))
 		elif msg["type"] == "get":
 			for f in self.files:
 				if msg["file"] == f:
 					client.send(json.dumps({"type":"get", "file":f}).encode("utf-8"))
+					client.recv(1024).decode("utf-8")
+					self.sendFile(client, os.path.join(self.host+"_"+str(self.port), f))
 					return
 			client.send(json.dumps({"type":"get", "file":None}).encode("utf-8"))
 
@@ -143,22 +147,22 @@ class Node:
 		return res
 
 	def lookUp(self, key):
-		# print(self.key, key)
-		node = (self.host, self.port)
 		# Finds the server that is responsible for the "key"
-		if not self.alreadyLooked: 		# Not Looked in Cycle
-			self.alreadyLooked = True 	# Mark It
-			if key > self.key: 			# Not Present Here
-				res = json.loads(self.send(
-					self.successor,
-					json.dumps({"type":"lookup", "key": key}).encode("utf-8"),
-					recv=True
-				))
-				node = (res["successor"][0], res["successor"][1])
-			# Looked Here
-			self.alreadyLooked = False
-		# Found from next Peers OR Present on Self
-		return node 
+		succ = self.hasher(self.successor[0]+str(self.successor[1]))
+		# Lies within self and successor
+		if self.key < key <= succ:
+			return self.successor
+		# Greater than successor
+		elif key > succ and self.key < succ:
+			res = json.loads(self.send(
+				self.successor,
+				json.dumps({"type":"lookup", "key": key}).encode("utf-8"),
+				recv=True
+			))
+			return (res["successor"][0], res["successor"][1])			
+		# Greater than limit
+		else:
+			return self.successor
 
 	def join(self, joiningAddr):
 		'''
@@ -166,6 +170,7 @@ class Node:
 		Update successor, predecessor, getting files, back up files. SEE MANUAL FOR DETAILS.
 		'''
 		# Corner Case 1: 1 Node (empty string)
+		threading.Thread(target=self.ping).start()
 		if joiningAddr:
 			# print((self.host, self.port), "joining:", joiningAddr)
 			# Message joiningAdd to lookup for my successor
@@ -178,14 +183,14 @@ class Node:
 			)
 			# Update Successor
 			self.successor = (res["successor"][0], res["successor"][1])
-			# print("Self: ", self.port, "Successor: ", self.successor)
+			# print("Self: ", self.port, "Successor: ", self.successor, "\n")
 			# Message Successor to update predecessor
 			self.send(
 				self.successor,
 				json.dumps({"type":"update_p", "predecessor": (self.host, self.port)}).encode("utf-8")
 			)
 			# Get Files
-
+			
 			# Back Up Files
 
 	def put(self, fileName):
@@ -198,9 +203,9 @@ class Node:
 		soc = socket.socket()
 		soc.connect(responsibleNode)
 		soc.send(
-			json.dumps({"type": "put", "file": fileName}).encode("utf-8")
+			json.dumps({"type": "put", "file": fileName, "ins":"add to your files"}).encode("utf-8")
 		)
-		time.sleep(1)
+		soc.recv(1024).decode("utf-8")
 		self.sendFile(soc, os.path.join(fileName))
 		soc.close()
 		
@@ -210,14 +215,15 @@ class Node:
 		i.e. "./file.py" and returns the name of file. If the file is not present on the network, return None.
 		'''
 		responsibleNode = self.lookUp(self.hasher(fileName))
-		res = json.loads(self.send(
-			responsibleNode,
-			json.dumps({"type":"get", "file": fileName}).encode("utf-8"),
-			recv=True
-		))
+		soc = socket.socket()
+		soc.connect(responsibleNode)
+		soc.send(
+			json.dumps({"type":"get", "file": fileName}).encode("utf-8")
+		)
+		res = json.loads(soc.recv(1024).decode("utf-8"))
 		if res["file"]:
-			putFile = open(os.path.join(".", res['file']), "w")
-			putFile.close()
+			soc.send(("ok").encode("utf-8"))
+			self.recieveFile(soc, os.path.join(res["file"]))
 		return res["file"]
 
 	def leave(self):
