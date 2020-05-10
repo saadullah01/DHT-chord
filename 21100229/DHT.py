@@ -28,7 +28,7 @@ class Node:
 		self.predecessor = (host, port)
 		# additional state variables
 		self.pingTime = 0.5
-		self.connections = dict()
+		self.path = self.host+"_"+str(self.port)
 
 	def hasher(self, key):
 		'''
@@ -43,9 +43,7 @@ class Node:
 		'''
 		 Function to handle each inbound connection, called as a thread from the listener.
 		'''
-		msg = client.recv(1024).decode("utf-8")
-		# print(msg)
-		msg = json.loads(msg)
+		msg = json.loads(client.recv(1024).decode("utf-8"))
 		if msg["type"] == "lookup":
 			node = self.lookUp(msg["key"])
 			client.send(
@@ -53,7 +51,7 @@ class Node:
 			)
 		elif msg["type"] == "update_p":
 			self.predecessor = (msg["predecessor"][0], msg["predecessor"][1])
-			# print("Self: ", self.port, "Predecessor: ", self.predecessor, "\n")
+			client.send(("ok").encode("utf-8"))
 		elif msg["type"] == "ping":
 			reqNode = (msg["req"][0], msg["req"][1])
 			if reqNode == self.predecessor:
@@ -96,6 +94,19 @@ class Node:
 					self.sendFile(client, os.path.join(self.host+"_"+str(self.port), f))
 					return
 			client.send(json.dumps({"type":"get", "file":None}).encode("utf-8"))
+		elif msg["type"] == "rehash":
+			for f in self.files:
+				if self.hasher(f) <= self.hasher(msg["hash"][0]+str(msg["hash"][1])):
+					client.send(json.dumps(
+						{"found": True, "file": f}
+					).encode("utf-8"))
+					client.recv(1024).decode("utf-8")
+					self.sendFile(client, os.path.join(self.path, f))
+					self.files.remove(f)
+					os.remove(os.path.join(self.path, f))
+			client.send(json.dumps(
+				{"found": False}
+			).encode("utf-8"))
 
 	def listener(self):
 		'''
@@ -131,7 +142,8 @@ class Node:
 					# Message Successor to update predecessor
 					self.send(
 						self.successor,
-						json.dumps({"type":"update_p", "predecessor": (self.host, self.port)}).encode("utf-8")
+						json.dumps({"type":"update_p", "predecessor": (self.host, self.port)}).encode("utf-8"),
+						recv=True
 					)
 				startTime = time.time()
 				# print("Self: ", self.port, "-- S: ", self.successor, "-- P: ", self.predecessor)
@@ -149,20 +161,22 @@ class Node:
 	def lookUp(self, key):
 		# Finds the server that is responsible for the "key"
 		succ = self.hasher(self.successor[0]+str(self.successor[1]))
-		# Lies within self and successor
+		# print("Self: ", self.key, "key: ", key, "succ: ", succ)
+		# Ideal Condition
 		if self.key < key <= succ:
 			return self.successor
-		# Greater than successor
-		elif key > succ and self.key < succ:
+		# Last Part of ring
+		elif self.key >= succ:
+			if key < self.key and key > succ:
+				return (self.host, self.port)
+			return self.successor
+		else:
 			res = json.loads(self.send(
 				self.successor,
 				json.dumps({"type":"lookup", "key": key}).encode("utf-8"),
 				recv=True
 			))
-			return (res["successor"][0], res["successor"][1])			
-		# Greater than limit
-		else:
-			return self.successor
+			return (res["successor"][0], res["successor"][1])
 
 	def join(self, joiningAddr):
 		'''
@@ -183,14 +197,26 @@ class Node:
 			)
 			# Update Successor
 			self.successor = (res["successor"][0], res["successor"][1])
-			# print("Self: ", self.port, "Successor: ", self.successor, "\n")
+			# print("Self:", self.port, "S:", self.successor)
 			# Message Successor to update predecessor
 			self.send(
 				self.successor,
-				json.dumps({"type":"update_p", "predecessor": (self.host, self.port)}).encode("utf-8")
+				json.dumps({"type":"update_p", "predecessor": (self.host, self.port)}).encode("utf-8"),
+				recv=True
 			)
-			# Get Files
-			
+			# Get Files (Provide me my share of files)
+			soc = socket.socket()
+			soc.connect(self.successor)
+			soc.send(
+				json.dumps({"type":"rehash", "hash": (self.host, self.port)}).encode("utf-8")
+			)
+			while True:
+				res = json.loads(soc.recv(1024).decode("utf-8"))
+				if not res["found"]:
+					break
+				self.files.append(res["file"])
+				soc.send(("ok").encode("utf-8"))
+				self.recieveFile(soc, os.path.join(self.path, res["file"]))
 			# Back Up Files
 
 	def put(self, fileName):
