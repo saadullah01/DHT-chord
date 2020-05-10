@@ -240,14 +240,14 @@ except:
 p = [start_port+0, start_port+1, start_port+2, start_port+3, start_port+4]
 files = ["dummy.txt", "dummy2.txt","dummy3.txt","dummy4.txt","dummy5.txt","dummy6.txt","dummy7.txt","dummy8.txt"]
 
+p1, p2, p3, p4, p5, p6 = 0, 0, 0, 0, 0, 0
 nodes, p1 = initiate(p)
 nodes, p2 = testJoin(nodes, p)
-# generateFiles(files)
-# p3 = testPutandGet(nodes, files)
-# nodes, p4 = testFileRehashing(nodes, files, start_port+5)
+generateFiles(files)
+p3 = testPutandGet(nodes, files)
+nodes, p4 = testFileRehashing(nodes, files, start_port+5)
 # nodes, p5 = testLeave(nodes, files)
 # nodes, p6 = testFailureTolerance(nodes, files)
-p3, p4, p5, p6 = 0, 0, 0, 0
 
 print ("\nTotal points: ", p1+p2+p3+p4+p5+p6, "/ 40")
 

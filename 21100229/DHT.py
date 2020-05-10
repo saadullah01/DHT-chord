@@ -44,7 +44,8 @@ class Node:
 		'''
 		 Function to handle each inbound connection, called as a thread from the listener.
 		'''
-		msg = json.loads(client.recv(1024).decode("utf-8"))
+		msg = client.recv(1024).decode("utf-8")
+		msg = json.loads(msg)
 		if msg["type"] == "lookup":
 			node = self.lookUp(msg["key"])
 			client.send(
@@ -52,7 +53,7 @@ class Node:
 			)
 		elif msg["type"] == "update_p":
 			self.predecessor = (msg["predecessor"][0], msg["predecessor"][1])
-			print("Self: ", self.port, "Predecessor: ", self.predecessor)
+			# print("Self: ", self.port, "Predecessor: ", self.predecessor)
 		elif msg["type"] == "ping":
 			reqNode = (msg["req"][0], msg["req"][1])
 			if reqNode == self.predecessor:
@@ -68,6 +69,26 @@ class Node:
 				self.successor = self.predecessor
 			elif self.predecessor != self.successor and self.predecessor == (self.host, self.port):
 				self.predecessor = self.successor
+		elif msg["type"] == "put":
+			# self.files.append(msg["file"])
+			# self.send(
+			# 	self.predecessor,
+			# 	json.dumps({"type":"put_b", "file": msg["file"]}).encode("utf-8")
+			# )
+			# putFile = open(os.path.join(self.host+"_"+str(self.port), msg['file']), "w")
+			# putFile.close()
+			pass
+		elif msg["type"] == "put_b":
+			# self.backUpFiles.append(msg["file"])
+			# putFile = open(os.path.join(self.host+"_"+str(self.port), msg['file']), "w")
+			# putFile.close()
+			pass
+		elif msg["type"] == "get":
+			for f in self.files:
+				if msg["file"] == f:
+					client.send(json.dumps({"type":"get", "file":f}).encode("utf-8"))
+					return
+			client.send(json.dumps({"type":"get", "file":None}).encode("utf-8"))
 
 	def listener(self):
 		'''
@@ -106,7 +127,7 @@ class Node:
 						json.dumps({"type":"update_p", "predecessor": (self.host, self.port)}).encode("utf-8")
 					)
 				startTime = time.time()
-				print("Self: ", self.port, "-- S: ", self.successor, "-- P: ", self.predecessor)
+				# print("Self: ", self.port, "-- S: ", self.successor, "-- P: ", self.predecessor)
 
 	def send(self, to, msg, recv=False):
 		res = None
@@ -143,7 +164,7 @@ class Node:
 		'''
 		# Corner Case 1: 1 Node (empty string)
 		if joiningAddr:
-			print((self.host, self.port), "joining:", joiningAddr)
+			# print((self.host, self.port), "joining:", joiningAddr)
 			# Message joiningAdd to lookup for my successor
 			res = json.loads(
 				self.send(
@@ -154,13 +175,14 @@ class Node:
 			)
 			# Update Successor
 			self.successor = (res["successor"][0], res["successor"][1])
-			print("Self: ", self.port, "Successor: ", self.successor)
+			# print("Self: ", self.port, "Successor: ", self.successor)
 			# Message Successor to update predecessor
 			self.send(
 				self.successor,
 				json.dumps({"type":"update_p", "predecessor": (self.host, self.port)}).encode("utf-8")
 			)
 			# Get Files
+
 			# Back Up Files
 
 	def put(self, fileName):
@@ -169,13 +191,27 @@ class Node:
 		Responsible node should then replicate the file on appropriate node. SEE MANUAL FOR DETAILS. Responsible node should save the files
 		in directory given by host_port e.g. "localhost_20007/file.py".
 		'''
-		pass
+		responsibleNode = self.lookUp(self.hasher(fileName))
+		soc = socket.socket()
+		soc.connect(responsibleNode)
+		self.sendFile(soc, os.path.join(fileName))
+		soc.close()
 		
 	def get(self, fileName):
 		'''
 		This function finds node responsible for file given by fileName, gets the file from responsible node, saves it in current directory
 		i.e. "./file.py" and returns the name of file. If the file is not present on the network, return None.
 		'''
+		responsibleNode = self.lookUp(self.hasher(fileName))
+		res = json.loads(self.send(
+			responsibleNode,
+			json.dumps({"type":"get", "file": fileName}).encode("utf-8"),
+			recv=True
+		))
+		if res["file"]:
+			putFile = open(os.path.join(".", res['file']), "w")
+			putFile.close()
+		return res["file"]
 
 	def leave(self):
 		'''
