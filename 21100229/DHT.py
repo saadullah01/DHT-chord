@@ -61,36 +61,28 @@ class Node:
 		elif msg["type"] == "update_s":
 			self.successor = (msg["successor"][0], msg["successor"][1])
 			client.send(("ok").encode("utf-8"))
+		elif msg["type"] == "update_n":
+			self.nextSuccessor = (msg["res"][0], msg["res"][1])
 		elif msg["type"] == "ping":
+			res = {"type":"ping", "ans":True, "nextAns":True}
 			reqNode = (msg["req"][0], msg["req"][1])
-			if reqNode == self.predecessor:
-				client.send(
-					json.dumps({"type":"ping", "ans":"yes", "nextAns":"yes"}).encode("utf-8")
-				)
-			else:
-				client.send(
-					json.dumps({"type":"ping", "ans":"no", "res":self.predecessor, "nextAns":"yes"}).encode("utf-8")
-				)
-			# nextNode = (msg["next"][0], msg["next"][1])
-			# if reqNode == self.predecessor and nextNode == self.successor:
-			# 	client.send(
-			# 		json.dumps({"type": "ping", "ans": "yes", "nextAns": "yes"}).encode("utf-8")
-			# 	)
-			# elif reqNode != self.predecessor and nextNode != self.successor:
-			# 	client.send(
-			# 		json.dumps({"type": "ping", "ans": "no", "res": self.predecessor, "nextAns":"no", "next":self.successor}).encode("utf-8")
-			# 	)
-			# elif reqNode != self.predecessor:
-			# 	client.send(
-			# 		json.dumps({"type": "ping", "ans": "no", "res": self.predecessor, "nextAns":"yes"}).encode("utf-8")
-			# 	)
-			# else:
-			# 	client.send(
-			# 		json.dumps({"type": "ping", "ans": "yes", "nextAns":"no", "next":self.successor}).encode("utf-8")
-			# 	)
+			nextNode = (msg["next"][0], msg["next"][1])
+			if nextNode != self.successor:
+				res["nextAns"] = False
+				res["next"] = self.successor
+			if reqNode != self.predecessor:
+				res["ans"] = False
+				res["res"] = self.predecessor
+			client.send(
+				json.dumps(res).encode("utf-8")
+			)
 			# Join Corner Case 2
 			if self.predecessor != self.successor and self.successor == (self.host, self.port):
 				self.successor = self.predecessor
+				self.send(
+					self.predecessor,
+					json.dumps({"type":"update_n", "res":self.successor}).encode("utf-8")
+				)
 			elif self.predecessor != self.successor and self.predecessor == (self.host, self.port):
 				self.predecessor = self.successor
 			# print("Self: ", self.port, "---S: ", self.successor, "---P: ", self.predecessor)
@@ -181,8 +173,12 @@ class Node:
 							recv=True
 						))
 						# print(res)
-						if res["ans"] == "no":
+						if not res["ans"]:
 							self.successor = (res["res"][0], res["res"][1])
+							self.send(
+								self.predecessor,
+								json.dumps({"type":"update_n", "res":self.successor}).encode("utf-8")
+							)
 							# Message Successor to update predecessor
 							# print("Self: ", self.port, "---", self.successor)
 							self.send(
@@ -190,7 +186,7 @@ class Node:
 								json.dumps({"type":"update_p", "predecessor": (self.host, self.port)}).encode("utf-8"),
 								recv=True
 							)
-						if res["nextAns"] == "no":
+						if not res["nextAns"]:
 							self.nextSuccessor = (res["next"][0], res["next"][1])
 						pinged = True
 						break
@@ -251,17 +247,6 @@ class Node:
 			# Update Successor
 			self.successor = (res["successor"][0], res["successor"][1])
 
-			# Update Next Successor
-			# res = json.loads(
-			# 	self.send(
-			# 		self.successor,
-			# 		json.dumps({"type":"getSucc"}).encode("utf-8"),
-			# 		recv=True
-			# 	)
-			# )
-			# self.nextSuccessor = (res["successor"][0], res["successor"][1])
-			# print("Self:", self.port, "S:", self.successor)
-			
 			# Message Successor to update predecessor
 			self.send(
 				self.successor,
@@ -286,6 +271,17 @@ class Node:
 				self.recieveFile(soc, os.path.join(self.path, res["file"]))
 				soc.send(("ok").encode("utf-8"))
 			soc.close()
+
+			# Update Next Successor
+			res = json.loads(
+				self.send(
+					self.successor,
+					json.dumps({"type":"getSucc"}).encode("utf-8"),
+					recv=True
+				)
+			)
+			self.nextSuccessor = (res["successor"][0], res["successor"][1])
+			# print("Self:", self.port, "S:", self.successor)
 			# Back Up Files
 
 	def put(self, fileName):
