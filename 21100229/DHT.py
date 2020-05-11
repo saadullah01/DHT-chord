@@ -29,6 +29,7 @@ class Node:
 		# additional state variables
 		self.pingTime = 0.5
 		self.path = self.host+"_"+str(self.port)
+		# print("Self: ", self.port, self.key)
 
 	def hasher(self, key):
 		'''
@@ -41,7 +42,7 @@ class Node:
 
 	def handleConnection(self, client, addr):
 		'''
-		 Function to handle each inbound connection, called as a thread from the listener.
+			Function to handle each inbound connection, called as a thread from the listener.
 		'''
 		msg = json.loads(client.recv(1024).decode("utf-8"))
 		if msg["type"] == "lookup":
@@ -51,6 +52,9 @@ class Node:
 			)
 		elif msg["type"] == "update_p":
 			self.predecessor = (msg["predecessor"][0], msg["predecessor"][1])
+			client.send(("ok").encode("utf-8"))
+		elif msg["type"] == "update_s":
+			self.predecessor = (msg["successor"][0], msg["successor"][1])
 			client.send(("ok").encode("utf-8"))
 		elif msg["type"] == "ping":
 			reqNode = (msg["req"][0], msg["req"][1])
@@ -95,18 +99,30 @@ class Node:
 					return
 			client.send(json.dumps({"type":"get", "file":None}).encode("utf-8"))
 		elif msg["type"] == "rehash":
+			temp = list()
 			for f in self.files:
+				# print(self.port, f)
 				if self.hasher(f) <= self.hasher(msg["hash"][0]+str(msg["hash"][1])):
+					# print("yes")
 					client.send(json.dumps(
 						{"found": True, "file": f}
 					).encode("utf-8"))
 					client.recv(1024).decode("utf-8")
 					self.sendFile(client, os.path.join(self.path, f))
-					self.files.remove(f)
-					os.remove(os.path.join(self.path, f))
+					temp.append(f)
+			for f in temp:
+				self.files.remove(f)
 			client.send(json.dumps(
 				{"found": False}
 			).encode("utf-8"))
+		elif msg["type"] == "leave":
+			num = msg["num"]
+			client.send(("ok").encode("utf-8"))
+			for _ in range(num):
+				fileName = client.recv(1024).decode("utf-8")
+				self.files.append(fileName)
+				client.send(("ok").encode("utf-8"))
+				self.recieveFile(client, os.path.join(self.path, fileName))
 
 	def listener(self):
 		'''
@@ -140,6 +156,7 @@ class Node:
 				if res["ans"] == "no":
 					self.successor = (res["res"][0], res["res"][1])
 					# Message Successor to update predecessor
+					print("Self: ", self.port, "---", self.successor)
 					self.send(
 						self.successor,
 						json.dumps({"type":"update_p", "predecessor": (self.host, self.port)}).encode("utf-8"),
@@ -211,12 +228,16 @@ class Node:
 				json.dumps({"type":"rehash", "hash": (self.host, self.port)}).encode("utf-8")
 			)
 			while True:
-				res = json.loads(soc.recv(1024).decode("utf-8"))
+				msg = soc.recv(1024).decode("utf-8")
+				# print(msg)
+				res = json.loads(msg)
 				if not res["found"]:
 					break
+				# print("Self: ", self.port, self.key, res["file"], self.hasher(res["file"]))
 				self.files.append(res["file"])
 				soc.send(("ok").encode("utf-8"))
 				self.recieveFile(soc, os.path.join(self.path, res["file"]))
+			soc.close()
 			# Back Up Files
 
 	def put(self, fileName):
@@ -258,6 +279,28 @@ class Node:
 		it should send its share of file to the new responsible node, close all the threads and leave. You can close listener thread
 		by setting self.stop flag to True
 		'''
+		self.send(
+			self.successor,
+			json.dumps({"type": "update_p", "predecessor": self.predecessor}).encode("utf-8"),
+			recv=True
+		)
+		self.send(
+			self.predecessor,
+			json.dumps({"type": "update_s", "successor": self.successor}).encode("utf-8"),
+			recv=True
+		)
+		soc = socket.socket()
+		soc.connect(self.successor)
+		soc.send(
+			json.dumps({"type": "leave", "num": len(self.files)}).encode("utf-8")
+		)
+		soc.recv(1024).decode("utf-8")
+		for f in self.files:
+			soc.send((f).encode("utf-8"))
+			soc.recv(1024).decode("utf-8")
+			self.sendFile(soc, os.path.join(self.path, f))
+		soc.close()
+		self.kill()
 
 	def sendFile(self, soc, fileName):
 		''' 
