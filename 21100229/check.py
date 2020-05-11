@@ -247,7 +247,9 @@ generateFiles(files)
 p3 = testPutandGet(nodes, files)
 nodes, p4 = testFileRehashing(nodes, files, start_port+5)
 nodes, p5 = testLeave(nodes, files)
-# nodes, p6 = testFailureTolerance(nodes, files)
+for n in nodes:
+	print("Check: ", n.port, "--S: ", n.successor, "--P: ", n.predecessor, "--NS: ", n.nextSuccessor)
+nodes, p6 = testFailureTolerance(nodes, files)
 
 # for f in files:
 # 	print("File: ", nodes[0].hasher(f))

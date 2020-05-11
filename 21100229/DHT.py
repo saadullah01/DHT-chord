@@ -29,6 +29,7 @@ class Node:
 		# additional state variables
 		self.pingTime = 0.5
 		self.path = self.host+"_"+str(self.port)
+		self.nextSuccessor = (host, port)
 		# print("Self: ", self.port, self.key)
 
 	def hasher(self, key):
@@ -50,22 +51,43 @@ class Node:
 			client.send(
 				json.dumps({"type": "lookup", "successor": node}).encode("utf-8")
 			)
+		elif msg["type"] == "getSucc":
+			client.send(
+				json.dumps({"type": "getSucc", "successor": self.successor}).encode("utf-8")
+			)
 		elif msg["type"] == "update_p":
 			self.predecessor = (msg["predecessor"][0], msg["predecessor"][1])
 			client.send(("ok").encode("utf-8"))
 		elif msg["type"] == "update_s":
-			self.predecessor = (msg["successor"][0], msg["successor"][1])
+			self.successor = (msg["successor"][0], msg["successor"][1])
 			client.send(("ok").encode("utf-8"))
 		elif msg["type"] == "ping":
 			reqNode = (msg["req"][0], msg["req"][1])
 			if reqNode == self.predecessor:
 				client.send(
-					json.dumps({"type": "ping", "ans": "yes"}).encode("utf-8")
+					json.dumps({"type":"ping", "ans":"yes", "nextAns":"yes"}).encode("utf-8")
 				)
 			else:
 				client.send(
-					json.dumps({"type": "ping", "ans": "no", "res": self.predecessor}).encode("utf-8")
+					json.dumps({"type":"ping", "ans":"no", "res":self.predecessor, "nextAns":"yes"}).encode("utf-8")
 				)
+			# nextNode = (msg["next"][0], msg["next"][1])
+			# if reqNode == self.predecessor and nextNode == self.successor:
+			# 	client.send(
+			# 		json.dumps({"type": "ping", "ans": "yes", "nextAns": "yes"}).encode("utf-8")
+			# 	)
+			# elif reqNode != self.predecessor and nextNode != self.successor:
+			# 	client.send(
+			# 		json.dumps({"type": "ping", "ans": "no", "res": self.predecessor, "nextAns":"no", "next":self.successor}).encode("utf-8")
+			# 	)
+			# elif reqNode != self.predecessor:
+			# 	client.send(
+			# 		json.dumps({"type": "ping", "ans": "no", "res": self.predecessor, "nextAns":"yes"}).encode("utf-8")
+			# 	)
+			# else:
+			# 	client.send(
+			# 		json.dumps({"type": "ping", "ans": "yes", "nextAns":"no", "next":self.successor}).encode("utf-8")
+			# 	)
 			# Join Corner Case 2
 			if self.predecessor != self.successor and self.successor == (self.host, self.port):
 				self.successor = self.predecessor
@@ -109,6 +131,7 @@ class Node:
 					).encode("utf-8"))
 					client.recv(1024).decode("utf-8")
 					self.sendFile(client, os.path.join(self.path, f))
+					client.recv(1024).decode("utf-8")
 					temp.append(f)
 			for f in temp:
 				self.files.remove(f)
@@ -148,22 +171,35 @@ class Node:
 		startTime = time.time()
 		while not self.stop:
 			while time.time() >= (startTime + self.pingTime):
-				res = json.loads(self.send(
-					self.successor,
-					json.dumps({"type": "ping", "req": (self.host, self.port)}).encode("utf-8"),
-					recv=True
-				))
-				if res["ans"] == "no":
-					self.successor = (res["res"][0], res["res"][1])
-					# Message Successor to update predecessor
-					print("Self: ", self.port, "---", self.successor)
-					self.send(
-						self.successor,
-						json.dumps({"type":"update_p", "predecessor": (self.host, self.port)}).encode("utf-8"),
-						recv=True
-					)
+				numPings = 3
+				pinged = False
+				while numPings:
+					try:
+						res = json.loads(self.send(
+							self.successor,
+							json.dumps({"type": "ping", "req": (self.host, self.port), "next":self.nextSuccessor}).encode("utf-8"),
+							recv=True
+						))
+						# print(res)
+						if res["ans"] == "no":
+							self.successor = (res["res"][0], res["res"][1])
+							# Message Successor to update predecessor
+							# print("Self: ", self.port, "---", self.successor)
+							self.send(
+								self.successor,
+								json.dumps({"type":"update_p", "predecessor": (self.host, self.port)}).encode("utf-8"),
+								recv=True
+							)
+						if res["nextAns"] == "no":
+							self.nextSuccessor = (res["next"][0], res["next"][1])
+						pinged = True
+						break
+					except:
+						numPings -= 1
+					# print("Self: ", self.port, "-- S: ", self.successor, "-- P: ", self.predecessor)
+					if not pinged:
+						print("Not Pinged")
 				startTime = time.time()
-				# print("Self: ", self.port, "-- S: ", self.successor, "-- P: ", self.predecessor)
 
 	def send(self, to, msg, recv=False):
 		res = None
@@ -214,7 +250,18 @@ class Node:
 			)
 			# Update Successor
 			self.successor = (res["successor"][0], res["successor"][1])
+
+			# Update Next Successor
+			# res = json.loads(
+			# 	self.send(
+			# 		self.successor,
+			# 		json.dumps({"type":"getSucc"}).encode("utf-8"),
+			# 		recv=True
+			# 	)
+			# )
+			# self.nextSuccessor = (res["successor"][0], res["successor"][1])
 			# print("Self:", self.port, "S:", self.successor)
+			
 			# Message Successor to update predecessor
 			self.send(
 				self.successor,
@@ -237,6 +284,7 @@ class Node:
 				self.files.append(res["file"])
 				soc.send(("ok").encode("utf-8"))
 				self.recieveFile(soc, os.path.join(self.path, res["file"]))
+				soc.send(("ok").encode("utf-8"))
 			soc.close()
 			# Back Up Files
 
@@ -279,11 +327,12 @@ class Node:
 		it should send its share of file to the new responsible node, close all the threads and leave. You can close listener thread
 		by setting self.stop flag to True
 		'''
-		self.send(
+		self.kill()
+		threading.Thread(target=self.send, args=(
 			self.successor,
 			json.dumps({"type": "update_p", "predecessor": self.predecessor}).encode("utf-8"),
-			recv=True
-		)
+			True
+		)).start() 
 		self.send(
 			self.predecessor,
 			json.dumps({"type": "update_s", "successor": self.successor}).encode("utf-8"),
@@ -300,7 +349,6 @@ class Node:
 			soc.recv(1024).decode("utf-8")
 			self.sendFile(soc, os.path.join(self.path, f))
 		soc.close()
-		self.kill()
 
 	def sendFile(self, soc, fileName):
 		''' 
