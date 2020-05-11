@@ -1,3 +1,10 @@
+'''
+	I have stored backup files at the predecessor node so that at pinging the successor it
+	could know whether it is killed or not. And on killing it could send the request to the 
+	next successor to update the predecessor to self and send the backup files to new successor
+	because they hash to it's space of ring now
+'''
+
 import socket 
 import threading
 import os
@@ -191,7 +198,9 @@ class Node:
 			listener.close()
 
 	def ping(self):
-		# Checks whether I am your predecessor or not
+		'''
+			Checks whether I am your predecessor or not
+		'''
 		startTime = time.time()
 		while not self.stop:
 			while time.time() >= (startTime + self.pingTime):
@@ -247,6 +256,9 @@ class Node:
 				startTime = time.time()
 
 	def send(self, to, msg, recv=False):
+		'''
+			Sends msg to the given node
+		'''
 		res = None
 		soc = socket.socket()
 		soc.connect(to)
@@ -257,6 +269,9 @@ class Node:
 		return res
 
 	def lookUp(self, key):
+		'''
+			Finds the node responsible for the key
+		'''
 		# Finds the server that is responsible for the "key"
 		succ = self.hasher(self.successor[0]+str(self.successor[1]))
 		# print("Self: ", self.key, "key: ", key, "succ: ", succ)
@@ -278,8 +293,7 @@ class Node:
 
 	def join(self, joiningAddr):
 		'''
-		This function handles the logic of a node joining. This function should do a lot of things such as:
-		Update successor, predecessor, getting files, back up files. SEE MANUAL FOR DETAILS.
+			Joins Network
 		'''
 		# Corner Case 1: 1 Node (empty string)
 		threading.Thread(target=self.ping).start()
@@ -330,7 +344,7 @@ class Node:
 				)
 			)
 			self.nextSuccessor = (res["successor"][0], res["successor"][1])
-			
+			time.sleep(1)
 			# Back Up Files
 			soc = socket.socket()
 			soc.connect(self.predecessor)
@@ -352,9 +366,7 @@ class Node:
 
 	def put(self, fileName):
 		'''
-		This function should first find node responsible for the file given by fileName, then send the file over the socket to that node
-		Responsible node should then replicate the file on appropriate node. SEE MANUAL FOR DETAILS. Responsible node should save the files
-		in directory given by host_port e.g. "localhost_20007/file.py".
+			Puts File
 		'''
 		responsibleNode = self.lookUp(self.hasher(fileName))
 		soc = socket.socket()
@@ -368,8 +380,7 @@ class Node:
 		
 	def get(self, fileName):
 		'''
-		This function finds node responsible for file given by fileName, gets the file from responsible node, saves it in current directory
-		i.e. "./file.py" and returns the name of file. If the file is not present on the network, return None.
+			Gets File
 		'''
 		responsibleNode = self.lookUp(self.hasher(fileName))
 		soc = socket.socket()
@@ -385,9 +396,7 @@ class Node:
 
 	def leave(self):
 		'''
-		When called leave, a node should gracefully leave the network i.e. it should update its predecessor that it is leaving
-		it should send its share of file to the new responsible node, close all the threads and leave. You can close listener thread
-		by setting self.stop flag to True
+			Leaves the network
 		'''
 		self.kill()
 		threading.Thread(target=self.send, args=(
@@ -457,5 +466,8 @@ class Node:
 		file.close()
 
 	def kill(self):
+		'''
+			Kill Node
+		'''
 		# DO NOT EDIT THIS, used for code testing
 		self.stop = True
