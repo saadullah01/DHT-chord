@@ -247,14 +247,7 @@ generateFiles(files)
 p3 = testPutandGet(nodes, files)
 nodes, p4 = testFileRehashing(nodes, files, start_port+5)
 nodes, p5 = testLeave(nodes, files)
-for n in nodes:
-	print("Check: ", n.port, "--S: ", n.successor, "--P: ", n.predecessor, "--NS: ", n.nextSuccessor)
 nodes, p6 = testFailureTolerance(nodes, files)
-
-# for f in files:
-# 	print("File: ", nodes[0].hasher(f))
-# for n in nodes:
-# 	print(n.port, n.files)
 
 print ("\nTotal points: ", p1+p2+p3+p4+p5+p6, "/ 40")
 

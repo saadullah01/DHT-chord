@@ -130,14 +130,46 @@ class Node:
 			client.send(json.dumps(
 				{"found": False}
 			).encode("utf-8"))
+		elif msg["type"] == "rehashBackup":
+			temp = list()
+			for f in self.backUpFiles:
+				# print(self.port, f)
+				if self.hasher(f) > self.hasher(msg["hash"][0]+str(msg["hash"][1])):
+					# print("yes")
+					client.send(json.dumps(
+						{"found": True, "file": f}
+					).encode("utf-8"))
+					client.recv(1024).decode("utf-8")
+					self.sendFile(client, os.path.join(self.path, f))
+					client.recv(1024).decode("utf-8")
+					temp.append(f)
+			for f in temp:
+				self.backUpFiles.remove(f)
+			client.send(json.dumps(
+				{"found": False}
+			).encode("utf-8"))
 		elif msg["type"] == "leave":
 			num = msg["num"]
 			client.send(("ok").encode("utf-8"))
 			for _ in range(num):
 				fileName = client.recv(1024).decode("utf-8")
-				self.files.append(fileName)
+				if msg["backup"]:
+					self.backUpFiles.append(fileName)
+				else:
+					self.files.append(fileName)
 				client.send(("ok").encode("utf-8"))
 				self.recieveFile(client, os.path.join(self.path, fileName))
+		elif msg["type"] == "kill":
+			self.predecessor = (msg["sender"][0], msg["sender"][1])
+			client.send(("ok").encode("utf-8"))
+			while True:
+				res = json.loads(client.recv(1024).decode("utf-8"))
+				if not res["found"]:
+					break
+				self.files.append(res["file"])
+				client.send(("ok").encode("utf-8"))
+				self.recieveFile(client, os.path.join(self.path, res["file"]))
+				client.send(("ok").encode("utf-8"))
 
 	def listener(self):
 		'''
@@ -194,7 +226,24 @@ class Node:
 						numPings -= 1
 					# print("Self: ", self.port, "-- S: ", self.successor, "-- P: ", self.predecessor)
 					if not pinged:
-						print("Not Pinged")
+						self.successor = self.nextSuccessor
+						soc = socket.socket()
+						soc.connect(self.successor)
+						soc.send(
+							json.dumps({"type":"kill", "sender":(self.host, self.port)}).encode("utf-8")
+						)
+						soc.recv(1024).decode("utf-8")
+						for f in self.backUpFiles:
+							soc.send(json.dumps(
+								{"found": True, "file": f}
+							).encode("utf-8"))
+							soc.recv(1024).decode("utf-8")
+							self.sendFile(soc, os.path.join(self.path, f))
+							soc.recv(1024).decode("utf-8")
+						soc.send(json.dumps(
+							{"found": False}
+						).encode("utf-8"))
+						soc.close()
 				startTime = time.time()
 
 	def send(self, to, msg, recv=False):
@@ -281,8 +330,25 @@ class Node:
 				)
 			)
 			self.nextSuccessor = (res["successor"][0], res["successor"][1])
-			# print("Self:", self.port, "S:", self.successor)
+			
 			# Back Up Files
+			soc = socket.socket()
+			soc.connect(self.predecessor)
+			soc.send(
+				json.dumps({"type":"rehashBackup", "hash": (self.host, self.port)}).encode("utf-8")
+			)
+			while True:
+				msg = soc.recv(1024).decode("utf-8")
+				# print(msg)
+				res = json.loads(msg)
+				if not res["found"]:
+					break
+				# print("Self: ", self.port, self.key, res["file"], self.hasher(res["file"]))
+				self.backUpFiles.append(res["file"])
+				soc.send(("ok").encode("utf-8"))
+				self.recieveFile(soc, os.path.join(self.path, res["file"]))
+				soc.send(("ok").encode("utf-8"))
+			soc.close()
 
 	def put(self, fileName):
 		'''
@@ -334,13 +400,26 @@ class Node:
 			json.dumps({"type": "update_s", "successor": self.successor}).encode("utf-8"),
 			recv=True
 		)
+		# Sending Files
 		soc = socket.socket()
 		soc.connect(self.successor)
 		soc.send(
-			json.dumps({"type": "leave", "num": len(self.files)}).encode("utf-8")
+			json.dumps({"type": "leave", "backup":False, "num": len(self.files)}).encode("utf-8")
 		)
 		soc.recv(1024).decode("utf-8")
 		for f in self.files:
+			soc.send((f).encode("utf-8"))
+			soc.recv(1024).decode("utf-8")
+			self.sendFile(soc, os.path.join(self.path, f))
+		soc.close()
+		# Sending BackUp Files
+		soc = socket.socket()
+		soc.connect(self.predecessor)
+		soc.send(
+			json.dumps({"type": "leave", "backup":True, "num": len(self.backUpFiles)}).encode("utf-8")
+		)
+		soc.recv(1024).decode("utf-8")
+		for f in self.backUpFiles:
 			soc.send((f).encode("utf-8"))
 			soc.recv(1024).decode("utf-8")
 			self.sendFile(soc, os.path.join(self.path, f))
